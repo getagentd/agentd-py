@@ -1,0 +1,7 @@
+.venv
+agentmetrics.db
+.claude
+CLAUDE.md
+dist
+.env
+.idea

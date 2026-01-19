@@ -1,0 +1,689 @@
+openapi: 3.0.3
+info:
+  title: AgentMetrics Receiver API
+  description: |
+    API specification for AgentMetrics receivers. Any implementation that follows
+    this spec will work with the AgentMetrics SDK.
+
+    The API has two main categories:
+    - **Ingest Endpoints** - Receive data from the SDK (required)
+    - **Query Endpoints** - Retrieve data for dashboards (optional)
+  version: 1.0.0
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+tags:
+  - name: Ingest
+    description: Endpoints for receiving data from the SDK
+  - name: Query
+    description: Endpoints for retrieving data (dashboards)
+  - name: System
+    description: Health checks and capabilities
+
+paths:
+  /v1/runs:
+    post:
+      tags:
+        - Ingest
+      summary: Ingest a completed agent run
+      description: |
+        Main endpoint the SDK calls after a run completes.
+        Use run_id for idempotency - duplicate submissions update existing records.
+      operationId: ingestRun
+      security:
+        - BearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentRun'
+      responses:
+        '202':
+          description: Run accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: accepted
+                  run_id:
+                    type: string
+                    format: uuid
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    get:
+      tags:
+        - Query
+      summary: List runs
+      description: List runs with optional filters, ordered by start time descending.
+      operationId: listRuns
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: agent_id
+          in: query
+          description: Filter by agent ID
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: Filter by status
+          schema:
+            $ref: '#/components/schemas/RunStatus'
+        - name: limit
+          in: query
+          description: Maximum number of results
+          schema:
+            type: integer
+            default: 50
+            maximum: 1000
+        - name: offset
+          in: query
+          description: Pagination offset
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of runs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AgentRun'
+
+  /v1/runs/{run_id}:
+    get:
+      tags:
+        - Query
+      summary: Get a single run
+      operationId: getRun
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Run details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentRun'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/runs/{run_id}/events:
+    post:
+      tags:
+        - Ingest
+      summary: Ingest a single event (streaming mode)
+      description: |
+        Receive a single event during a run. Used when streaming mode is enabled.
+        Use event_id for idempotency.
+      operationId: ingestEvent
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunEvent'
+      responses:
+        '202':
+          description: Event accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: accepted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    get:
+      tags:
+        - Query
+      summary: Get events for a run
+      operationId: getRunEvents
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RunEvent'
+
+  /v1/agents:
+    get:
+      tags:
+        - Query
+      summary: List all agents with statistics
+      operationId: listAgents
+      security:
+        - BearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: List of agents with aggregated stats
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AgentStats'
+
+  /v1/stats:
+    get:
+      tags:
+        - Query
+      summary: Get aggregate statistics
+      operationId: getStats
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: agent_id
+          in: query
+          description: Filter by agent ID
+          schema:
+            type: string
+        - name: since
+          in: query
+          description: Filter runs after this ISO date
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Aggregate statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AggregateStats'
+
+  /v1/tools:
+    get:
+      tags:
+        - Query
+      summary: Get tool usage statistics
+      operationId: getToolStats
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: agent_id
+          in: query
+          description: Filter by agent ID
+          schema:
+            type: string
+        - name: since
+          in: query
+          description: Filter runs after this ISO date
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Tool usage statistics
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ToolStats'
+
+  /v1/capabilities:
+    get:
+      tags:
+        - System
+      summary: Get receiver capabilities
+      description: |
+        Returns receiver capabilities for SDK feature negotiation.
+        Enables graceful degradation with older receivers.
+      operationId: getCapabilities
+      responses:
+        '200':
+          description: Receiver capabilities
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Capabilities'
+
+  /health:
+    get:
+      tags:
+        - System
+      summary: Health check
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  timestamp:
+                    type: string
+                    format: date-time
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: Optional API key authentication
+
+  schemas:
+    RunStatus:
+      type: string
+      enum:
+        - running
+        - completed
+        - failed
+        - timeout
+
+    EventType:
+      type: string
+      enum:
+        - run_start
+        - assistant_message
+        - thinking
+        - tool_call
+        - tool_result
+        - error
+        - api_error
+        - run_end
+        - stream_event
+        - system_message
+        - user_message
+
+    TokenUsage:
+      type: object
+      properties:
+        input:
+          type: integer
+          description: Input tokens used
+          example: 15000
+        output:
+          type: integer
+          description: Output tokens generated
+          example: 3200
+        cache_read:
+          type: integer
+          description: Tokens read from cache
+          example: 0
+        cache_write:
+          type: integer
+          description: Tokens written to cache
+          example: 0
+
+    ErrorInfo:
+      type: object
+      properties:
+        type:
+          type: string
+          description: Error type/class name
+          example: TimeoutError
+        message:
+          type: string
+          description: Error message
+          example: Agent exceeded max turns
+        stack:
+          type: string
+          description: Optional stack trace
+
+    ToolCallSummary:
+      type: object
+      properties:
+        tool:
+          type: string
+          description: Tool name
+          example: WebSearch
+        count:
+          type: integer
+          description: Number of times called
+          example: 3
+        total_duration_ms:
+          type: integer
+          description: Total time spent in this tool
+          example: 1500
+        success_count:
+          type: integer
+          example: 3
+        failure_count:
+          type: integer
+          example: 0
+
+    RunEvent:
+      type: object
+      required:
+        - event_id
+        - type
+        - timestamp
+        - sequence_number
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/EventType'
+        timestamp:
+          type: string
+          format: date-time
+        sequence_number:
+          type: integer
+          description: Monotonic sequence number for reliable ordering
+        tool_name:
+          type: string
+          description: For tool events
+        tool_id:
+          type: string
+          description: ToolUseBlock ID for correlation
+        tool_input:
+          type: object
+          description: Tool input parameters
+        tool_output:
+          type: string
+          description: Tool output/result
+        tool_duration_ms:
+          type: integer
+        tool_success:
+          type: boolean
+        content:
+          type: string
+          description: For message events
+        thinking:
+          type: string
+          description: For extended thinking events
+        tokens:
+          $ref: '#/components/schemas/TokenUsage'
+        error:
+          $ref: '#/components/schemas/ErrorInfo'
+
+    AgentRun:
+      type: object
+      required:
+        - run_id
+        - trace_id
+        - span_id
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        agent_id:
+          type: string
+          description: Identifier for the agent
+        session_id:
+          type: string
+          description: Identifier for the session
+        sdk_session_id:
+          type: string
+          description: Session ID from SDK
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        duration_ms:
+          type: integer
+          description: Total run duration in milliseconds
+        api_duration_ms:
+          type: integer
+          description: API-only duration (excludes overhead)
+        first_token_ms:
+          type: integer
+          description: Time to first token (TTFT) in milliseconds
+        num_turns:
+          type: integer
+          description: Number of conversation turns
+        status:
+          $ref: '#/components/schemas/RunStatus'
+        error:
+          $ref: '#/components/schemas/ErrorInfo'
+        tokens:
+          $ref: '#/components/schemas/TokenUsage'
+        cost_usd:
+          type: number
+          format: float
+          description: Preferred cost (SDK if available, else estimated)
+          example: 0.12
+        cost_source:
+          type: string
+          enum:
+            - sdk
+            - estimated
+          description: Source of the cost_usd value
+        sdk_cost_usd:
+          type: number
+          format: float
+          description: Authoritative cost from SDK
+          example: 0.12
+        estimated_cost_usd:
+          type: number
+          format: float
+          description: Cost estimated by agentmetrics
+          example: 0.12
+        model:
+          type: string
+          description: Model used
+          example: claude-sonnet-4-5-20250929
+        trace_id:
+          type: string
+          description: OpenTelemetry-compatible trace ID (32 hex chars)
+          example: a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6
+        span_id:
+          type: string
+          description: OpenTelemetry-compatible span ID (16 hex chars)
+          example: a1b2c3d4e5f6a7b8
+        parent_span_id:
+          type: string
+          description: Parent span ID for nested runs
+        tool_calls:
+          type: array
+          items:
+            $ref: '#/components/schemas/ToolCallSummary'
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/RunEvent'
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Arbitrary key-value pairs
+        prompt:
+          type: string
+          description: Original prompt (optional)
+
+    AgentStats:
+      type: object
+      properties:
+        agent_id:
+          type: string
+        run_count:
+          type: integer
+        success_count:
+          type: integer
+        failure_count:
+          type: integer
+        avg_duration_ms:
+          type: number
+        total_cost_usd:
+          type: number
+        last_run_at:
+          type: string
+          format: date-time
+
+    AggregateStats:
+      type: object
+      properties:
+        total_runs:
+          type: integer
+        completed:
+          type: integer
+        failed:
+          type: integer
+        avg_duration_ms:
+          type: number
+        avg_api_duration_ms:
+          type: number
+          description: Average API-only duration
+        avg_first_token_ms:
+          type: number
+          description: Average time to first token
+        avg_num_turns:
+          type: number
+          description: Average conversation turns per run
+        total_tokens_input:
+          type: integer
+        total_tokens_output:
+          type: integer
+        total_cache_read:
+          type: integer
+          description: Total cache read tokens
+        total_cache_write:
+          type: integer
+          description: Total cache write tokens
+        total_cost_usd:
+          type: number
+          description: Total cost (prefers SDK cost)
+        total_sdk_cost_usd:
+          type: number
+          description: Total cost from SDK
+        total_estimated_cost_usd:
+          type: number
+          description: Total estimated cost
+
+    ToolStats:
+      type: object
+      properties:
+        tool_name:
+          type: string
+        call_count:
+          type: integer
+        success_count:
+          type: integer
+        failure_count:
+          type: integer
+        avg_duration_ms:
+          type: number
+
+    Capabilities:
+      type: object
+      properties:
+        version:
+          type: string
+          description: Receiver implementation version
+          example: "0.1.0"
+        api_version:
+          type: string
+          description: API version supported
+          example: v1
+        features:
+          type: object
+          properties:
+            streaming_events:
+              type: boolean
+              description: Whether streaming events endpoint is supported
+            batch_ingest:
+              type: boolean
+              description: Whether batch ingestion is supported
+            compression:
+              type: array
+              items:
+                type: string
+              description: Supported compression algorithms
+        limits:
+          type: object
+          properties:
+            max_events_per_run:
+              type: integer
+              example: 10000
+            max_payload_bytes:
+              type: integer
+              example: 10000000
+            retention_days:
+              type: integer
+              nullable: true
+              description: Data retention period (null = unlimited)
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              detail:
+                type: string
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              detail:
+                type: string
+                example: Run not found
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              detail:
+                type: string
