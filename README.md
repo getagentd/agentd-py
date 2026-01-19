@@ -14,7 +14,7 @@ Drop-in replacement for `claude_agent_sdk.query()` that adds metrics, tracing, a
 from claude_agent_sdk import query
 
 # After (that's it)
-from agentd_sdk import query
+from agentd import query
 ```
 
 ---
@@ -41,7 +41,7 @@ pip install agentd-sdk
 ### Use
 ```python
 import asyncio
-from agentd_sdk import query
+from agentd import query
 from claude_agent_sdk import ClaudeAgentOptions
 
 async def main():
@@ -100,7 +100,7 @@ Trace:      a1b2c3d4e5f6a7b8...
 
 ### Programmatic Configuration
 ```python
-from agentd_sdk import configure
+from agentd import configure
 
 configure(
     endpoint_url="https://your-receiver.com",
@@ -145,7 +145,7 @@ export AGENTD_DISABLED=true
 Keep using `claude_agent_sdk.query()` directly:
 ```python
 from claude_agent_sdk import query
-from agentd_sdk import tracked_query
+from agentd import tracked_query
 
 async for message in tracked_query(
     query(prompt="...", options=options),
@@ -159,7 +159,7 @@ async for message in tracked_query(
 For fine-grained control:
 ```python
 from claude_agent_sdk import query
-from agentd_sdk import track_run
+from agentd import track_run
 
 async with track_run(agent_id="my-agent") as tracker:
     async for message in query(prompt="...", options=options):
