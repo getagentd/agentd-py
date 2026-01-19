@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentd-sdk"
-version = "0.5.0"
+version = "0.6.0"
 description = "Observability SDK for Claude Agent SDK - metrics, tracing, and debugging for AI agents"
 readme = "README.md"
 license = "MIT"
